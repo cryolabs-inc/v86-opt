@@ -3,41 +3,78 @@
 
 <script src="../build/libv86.js"></script>
 <script>
-"use strict";
+    "use strict";
 
-window.onload = function()
-{
-    // Async loading of the iso image
-    // Note how the emulation starts without downloading the 50MB image
+    window.onload = function () {
+        let i = document.querySelector('input')
+        i.onchange = async (ev) => {
+            let q = i.files[0];
+            let rootURL = q.name ?? "imported";
+            await fsOpfs.initialize();
+            let nm = fsOpfs.CreateFile(rootURL, 0);
+            console.log(q.size);
+            fsOpfs.ChangeSize(nm, q.size);
 
-    // Support of the "Range: bytes=..." header is required on the server, CORS
-    // is required if the server is on a different host
+            fsOpfs.ScheduleFileWrite(nm, async (writer) => {
+                await writer.write(q);
+            });
 
-    var emulator = new V86({
-        wasm_path: "../build/v86.wasm",
-        memory_size: 64 * 1024 * 1024,
-        vga_memory_size: 2 * 1024 * 1024,
-        screen_container: document.getElementById("screen_container"),
-        bios: {
-            url: "../bios/seabios.bin",
-        },
-        vga_bios: {
-            url: "../bios/vgabios.bin",
-        },
-        cdrom: {
-            url: "../images/dsl-4.11.rc2.iso",
-            async: true,
+            await fsOpfs.persist();
+            alert("Uploaded");
+        }
+        let a = document.createElement('input');
+        a.type = "file";
+        let ws = new WebSocket('wss://anura.pro');
+        ws.onerror = (ev)=>{
+            alert("could not connect");
+        }
+        onerror = alert;
+        
+            var emulator = new V86({
+                wasm_path: "../build/v86.wasm",
+                memory_size: 2 * 1024 * 1024 * 1024,
+                vga_memory_size: 2 * 1024 * 1024,
+                screen_container: document.getElementById("screen_container"),
+                bios: {
+                    url: "../bios/seabios.bin",
+                },
+                vga_bios: {
+                    url: "../bios/vgabios.bin",
+                },
+                
+                hda: {
+                    url: "/images/alpine.iso",
+                    async: false,
 
-            // size can be determined automatically, but costs an extra request
-            // and might not work reliably
-            size: 52824064,
-        },
-        autostart: true,
-    });
-}
+                 
+                },
+                autostart: true,
+                filesystem: {},
+                net_device: {
+                    relay_url: "wisps://anura.pro",
+                    type: 'virtio'
+                }
+            });
+            self.emulator = emulator;
+        
+        document.querySelector('button').onclick = q=>{
+            
+            emulator.fs9p.walk('/', (path, ino)=>{
+                console.log(path);
+            });
+        }
+        // Async loading of the iso image
+        // Note how the emulation starts without downloading the 50MB image
+
+        // Support of the "Range: bytes=..." header is required on the server, CORS
+        // is required if the server is on a different host
+
+
+    }
 </script>
-
 <div id="screen_container">
     <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
     <canvas style="display: none"></canvas>
+    <input type="file" id="con" />
+    <button></button>
 </div>

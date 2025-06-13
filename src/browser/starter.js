@@ -21,6 +21,7 @@ import { MemoryFileStorage, ServerFileStorageWrapper } from "./filestorage.js";
 import { SyncBuffer, buffer_from_object } from "../buffer.js";
 import { FS } from "../../lib/filesystem.js";
 import { EEXIST, ENOENT } from "../../lib/9p.js";
+import { FSOpfs } from "../../lib/filesystem_opfs.js";
 
 
 /**
@@ -521,13 +522,12 @@ V86.prototype.continue_init = async function(emulator, options)
         var base_url = options.filesystem.baseurl;
 
         let file_storage = new MemoryFileStorage();
-
         if(base_url)
         {
             file_storage = new ServerFileStorageWrapper(file_storage, base_url);
         }
-        settings.fs9p = this.fs9p = new FS(file_storage);
-
+        settings.fs9p = this.fs9p = new FSOpfs(file_storage);
+            
         if(fs_url)
         {
             dbg_assert(base_url, "Filesystem: baseurl must be specified");
@@ -1222,7 +1222,7 @@ V86.prototype.mount_fs = async function(path, baseurl, basefs)
     {
         file_storage = new ServerFileStorageWrapper(file_storage, baseurl);
     }
-    const newfs = new FS(file_storage, this.fs9p.qidcounter);
+    const newfs = new FSOpfs(file_storage, this.fs9p.qidcounter);
     if(baseurl)
     {
         dbg_assert(typeof basefs === "object", "Filesystem: basefs must be a JSON object");
@@ -1478,6 +1478,9 @@ FileNotFoundError.prototype = Error.prototype;
 if(typeof module !== "undefined" && typeof module.exports !== "undefined")
 {
     module.exports["V86"] = V86;
+    module.exports["FS"] = FS;
+    module.exports["OPFS"] = FSOpfs;
+
 }
 else if(typeof window !== "undefined")
 {

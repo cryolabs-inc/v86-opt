@@ -33,6 +33,8 @@ CLOSURE_SOURCE_MAP=\
 		--create_source_map '%outname%.map'
 
 CLOSURE_FLAGS=\
+		--hide_warnings_for=src/browser/worker_interface.js\
+		--jscomp_off=missingProperties\
 		--generate_exports\
 		--externs src/externs.js\
 		--warning_level VERBOSE\
@@ -84,11 +86,11 @@ CORE_FILES=cjs.js const.js io.js main.js lib.js buffer.js ide.js pci.js floppy.j
 	   state.js ne2k.js sb16.js virtio.js virtio_console.js virtio_net.js virtio_balloon.js \
 	   bus.js log.js cpu.js \
 	   elf.js kernel.js
-LIB_FILES=9p.js filesystem.js marshall.js
+LIB_FILES=9p.js filesystem.js marshall.js filesystem_opfs.js
 BROWSER_FILES=screen.js keyboard.js mouse.js speaker.js serial.js \
 	      network.js starter.js worker_bus.js dummy_screen.js \
 	      inbrowser_network.js fake_network.js wisp_network.js fetch_network.js \
-          print_stats.js filestorage.js
+          print_stats.js filestorage.js worker_interface.js
 
 RUST_FILES=$(shell find src/rust/ -name '*.rs') \
 	   src/rust/gen/interpreter.rs src/rust/gen/interpreter0f.rs \
@@ -151,7 +153,7 @@ build/libv86.mjs: $(CLOSURE) src/*.js lib/*.js src/browser/*.js
 		$(CLOSURE_FLAGS)\
 		--compilation_level SIMPLE\
 		--jscomp_off=missingProperties\
-		--output_wrapper ';let module = {exports:{}}; %output%; export default module.exports.V86; export let {V86, CPU} = module.exports;'\
+		--output_wrapper ';let module = {exports:{}}; %output%; export default module.exports.V86; export let {OPFS, V86, CPU} = module.exports;'\
 		--js $(CORE_FILES)\
 		--js $(BROWSER_FILES)\
 		--js $(LIB_FILES)\
