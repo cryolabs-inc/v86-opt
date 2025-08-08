@@ -787,7 +787,7 @@ VirtIO.prototype.init_capabilities = function(capabilities)
                 {
                     const val = field.read();
 
-                    console.log("Device<" + this.name + "> " +
+                    dbg_log("Device<" + this.name + "> " +
                             "cap[" + cap.type + "] " +
                             "read[" + field.name + "] " +
                             "=> " + h(val, field.bytes * 8),
@@ -797,7 +797,7 @@ VirtIO.prototype.init_capabilities = function(capabilities)
                 };
                 write = data =>
                 {
-                    console.log("Device<" + this.name + "> " +
+                    dbg_log("Device<" + this.name + "> " +
                             "cap[" + cap.type + "] " +
                             "write[" + field.name + "] " +
                             "<= " + h(data, field.bytes * 8),
