@@ -1,0 +1,241 @@
+diff --git a/Makefile b/Makefile
+index 2718c47a..d9b02688 100644
+--- a/Makefile
++++ b/Makefile
+@@ -33,6 +33,7 @@ CLOSURE_SOURCE_MAP=\
+ 		--create_source_map '%outname%.map'
+ 
+ CLOSURE_FLAGS=\
++		--jscomp_off=missingProperties\
+ 		--generate_exports\
+ 		--externs src/externs.js\
+ 		--warning_level VERBOSE\
+@@ -84,7 +85,7 @@ CORE_FILES=cjs.js const.js io.js main.js lib.js buffer.js ide.js pci.js floppy.j
+ 	   state.js ne2k.js sb16.js virtio.js virtio_console.js virtio_net.js virtio_balloon.js \
+ 	   bus.js log.js cpu.js \
+ 	   elf.js kernel.js
+-LIB_FILES=9p.js filesystem.js marshall.js
++LIB_FILES=9p.js filesystem.js marshall.js filesystem_opfs.js
+ BROWSER_FILES=screen.js keyboard.js mouse.js speaker.js serial.js \
+ 	      network.js starter.js worker_bus.js dummy_screen.js \
+ 	      inbrowser_network.js fake_network.js wisp_network.js fetch_network.js \
+diff --git a/examples/async_load.html b/examples/async_load.html
+index ac00f21e..a23da932 100644
+--- a/examples/async_load.html
++++ b/examples/async_load.html
+@@ -3,41 +3,80 @@
+ 
+ <script src="../build/libv86.js"></script>
+ <script>
+-"use strict";
+-
+-window.onload = function()
+-{
+-    // Async loading of the iso image
+-    // Note how the emulation starts without downloading the 50MB image
+-
+-    // Support of the "Range: bytes=..." header is required on the server, CORS
+-    // is required if the server is on a different host
+-
+-    var emulator = new V86({
+-        wasm_path: "../build/v86.wasm",
+-        memory_size: 64 * 1024 * 1024,
+-        vga_memory_size: 2 * 1024 * 1024,
+-        screen_container: document.getElementById("screen_container"),
+-        bios: {
+-            url: "../bios/seabios.bin",
+-        },
+-        vga_bios: {
+-            url: "../bios/vgabios.bin",
+-        },
+-        cdrom: {
+-            url: "../images/dsl-4.11.rc2.iso",
+-            async: true,
+-
+-            // size can be determined automatically, but costs an extra request
+-            // and might not work reliably
+-            size: 52824064,
+-        },
+-        autostart: true,
+-    });
+-}
+-</script>
++    "use strict";
++
++    window.onload = function () {
++        let i = document.querySelector('input')
++        i.onchange = async (ev) => {
++            let q = i.files[0];
++            let rootURL = q.name ?? "imported";
++            await fsOpfs.initialize();
++            let nm = fsOpfs.CreateFile(rootURL, 0);
++            console.log(q.size);
++            fsOpfs.ChangeSize(nm, q.size);
++
++            fsOpfs.ScheduleFileWrite(nm, async (writer) => {
++                await writer.write(q);
++            });
++
++            await fsOpfs.persist();
++            alert("Uploaded");
++        }
++        let a = document.createElement('input');
++        a.type = "file";
++        let ws = new WebSocket('wss://anura.pro');
++        ws.onerror = (ev)=>{
++            alert("could not connect");
++        }
++        onerror = alert;
++        a.onchange = (e) => {
++            var emulator = new V86({
++                wasm_path: "../build/v86.wasm",
++                memory_size: 2 * 1024 * 1024 * 1024,
++                vga_memory_size: 2 * 1024 * 1024,
++                screen_container: document.getElementById("screen_container"),
++                bios: {
++                    url: "../bios/seabios.bin",
++                },
++                vga_bios: {
++                    url: "../bios/vgabios.bin",
++                },
++                bzimage: {
++                    url: "/vmlinuz-virt"
++                },
++                cmdline: "init=/bin/sh root=/dev/sda  rw",
++                hda: {
++                    buffer: a.files[0],
++                    async: false,
++
++                    // size can be determined automatically, but costs an extra request
++                    // and might not work reliably
++                    size: 52824064,
++                },
++                autostart: true,
++                filesystem: {},
++                net_device: {
++                    relay_url: "wisps://anura.pro",
++                    type: 'virtio'
++                }
++            });
++        }
++        onclick = () => {
++            a.click();
++            onclick = null;
++        }
++        // Async loading of the iso image
++        // Note how the emulation starts without downloading the 50MB image
+ 
++        // Support of the "Range: bytes=..." header is required on the server, CORS
++        // is required if the server is on a different host
++
++
++    }
++</script>
+ <div id="screen_container">
+     <div style="white-space: pre; font: 14px monospace; line-height: 14px"></div>
+     <canvas style="display: none"></canvas>
+-</div>
++    <input type="file" id="con" />
++
++</div>
+\ No newline at end of file
+diff --git a/lib/9p.js b/lib/9p.js
+index 06612cf1..499983b4 100644
+--- a/lib/9p.js
++++ b/lib/9p.js
+@@ -14,7 +14,7 @@ import { h } from "../src/lib.js";
+ // For Types Only
+ import { CPU } from "../src/cpu.js";
+ import { BusConnector } from "../src/bus.js";
+-import { FS } from "./filesystem.js";
++import { FSOpfs } from "./filesystem_opfs.js";
+ 
+ /**
+  * @const
+@@ -90,11 +90,11 @@ function range(size)
+ /**
+  * @constructor
+  *
+- * @param {FS} filesystem
++ * @param {FSOpfs} filesystem
+  * @param {CPU} cpu
+  */
+ export function Virtio9p(filesystem, cpu, bus) {
+-    /** @type {FS} */
++    /** @type {FSOpfs} */
+     this.fs = filesystem;
+ 
+     /** @const @type {BusConnector} */
+@@ -316,7 +316,7 @@ Virtio9p.prototype.ReceiveRequest = async function (bufchain) {
+             var inode = this.fs.GetInode(idx);
+             dbg_log("file open " + this.fids[fid].dbg_name, LOG_9P);
+             //if (inode.status === STATUS_LOADING) return;
+-            var ret = this.fs.OpenInode(idx, mode);
++            var ret = await this.fs.OpenInode(idx, mode);
+ 
+             this.fs.AddEvent(this.fids[fid].inodeid,
+                 function() {
+@@ -613,7 +613,7 @@ Virtio9p.prototype.ReceiveRequest = async function (bufchain) {
+                 this.BuildReply(id, tag, 4 + count);
+                 this.SendReply(bufchain);
+             } else {
+-                this.fs.OpenInode(this.fids[fid].inodeid, undefined);
++                await this.fs.OpenInode(this.fids[fid].inodeid, undefined);
+                 const inodeid = this.fids[fid].inodeid;
+ 
+                 count = Math.min(count, this.replybuffer.length - (7 + 4));
+@@ -751,6 +751,7 @@ Virtio9p.prototype.ReceiveRequest = async function (bufchain) {
+ 
+         case 104: // attach
+             // return root directorie's QID
++            await this.fs.initialize();
+             var req = marshall.Unmarshall(["w", "w", "s", "s", "w"], buffer, state);
+             var fid = req[0];
+             var uid = req[4];
+diff --git a/src/browser/starter.js b/src/browser/starter.js
+index 45b0b9cb..c3782434 100644
+--- a/src/browser/starter.js
++++ b/src/browser/starter.js
+@@ -21,6 +21,7 @@ import { MemoryFileStorage, ServerFileStorageWrapper } from "./filestorage.js";
+ import { SyncBuffer, buffer_from_object } from "../buffer.js";
+ import { FS } from "../../lib/filesystem.js";
+ import { EEXIST, ENOENT } from "../../lib/9p.js";
++import { FSOpfs } from "../../lib/filesystem_opfs.js";
+ 
+ 
+ /**
+@@ -521,13 +522,12 @@ V86.prototype.continue_init = async function(emulator, options)
+         var base_url = options.filesystem.baseurl;
+ 
+         let file_storage = new MemoryFileStorage();
+-
+         if(base_url)
+         {
+             file_storage = new ServerFileStorageWrapper(file_storage, base_url);
+         }
+-        settings.fs9p = this.fs9p = new FS(file_storage);
+-
++        settings.fs9p = this.fs9p = new FSOpfs(file_storage);
++            
+         if(fs_url)
+         {
+             dbg_assert(base_url, "Filesystem: baseurl must be specified");
+@@ -1222,7 +1222,7 @@ V86.prototype.mount_fs = async function(path, baseurl, basefs)
+     {
+         file_storage = new ServerFileStorageWrapper(file_storage, baseurl);
+     }
+-    const newfs = new FS(file_storage, this.fs9p.qidcounter);
++    const newfs = new FSOpfs(file_storage, this.fs9p.qidcounter);
+     if(baseurl)
+     {
+         dbg_assert(typeof basefs === "object", "Filesystem: basefs must be a JSON object");
+@@ -1478,6 +1478,9 @@ FileNotFoundError.prototype = Error.prototype;
+ if(typeof module !== "undefined" && typeof module.exports !== "undefined")
+ {
+     module.exports["V86"] = V86;
++    module.exports["FS"] = FS;
++    module.exports["OPFS"] = FSOpfs;
++
+ }
+ else if(typeof window !== "undefined")
+ {
