@@ -29,7 +29,7 @@ import { PS2 } from "./ps2.js";
 import { read_elf } from "./elf.js";
 
 import { FloppyController } from "./floppy.js";
-import { IDEController } from "./ide.js";
+import { IDEDevice } from "./ide.js";
 import { VirtioNet } from "./virtio_net.js";
 import { VGAScreen } from "./vga.js";
 import { VirtioBalloon } from "./virtio_balloon.js";
@@ -537,23 +537,8 @@ CPU.prototype.get_state = function()
     state[53] = this.devices.ps2;
     state[54] = this.devices.uart0;
     state[55] = this.devices.fdc;
-
-    if(!this.devices.ide.secondary)
-    {
-        if(this.devices.ide.primary?.master.is_atapi)
-        {
-            state[56] = this.devices.ide.primary;
-        }
-        else
-        {
-            state[57] = this.devices.ide.primary;
-        }
-    }
-    else
-    {
-        state[85] = this.devices.ide;
-    }
-
+    state[56] = this.devices.cdrom;
+    state[57] = this.devices.hda;
     state[58] = this.devices.pit;
     state[59] = this.devices.net;
     state[60] = this.get_state_pic();
@@ -699,6 +684,7 @@ CPU.prototype.set_state = function(state)
     this.devices.virtio_9p && this.devices.virtio_9p.set_state(state[45]);
     this.devices.apic && this.devices.apic.set_state(state[46]);
     this.devices.rtc && this.devices.rtc.set_state(state[47]);
+    this.devices.pci && this.devices.pci.set_state(state[48]);
     this.devices.dma && this.devices.dma.set_state(state[49]);
     this.devices.acpi && this.devices.acpi.set_state(state[50]);
     // 51 (formerly hpet)
@@ -706,32 +692,8 @@ CPU.prototype.set_state = function(state)
     this.devices.ps2 && this.devices.ps2.set_state(state[53]);
     this.devices.uart0 && this.devices.uart0.set_state(state[54]);
     this.devices.fdc && this.devices.fdc.set_state(state[55]);
-
-    if(state[56] || state[57])
-    {
-        // ide device from older version of v86, only primary: state[56] contains cdrom, state[57] contains hard drive
-
-        const ide_config = [[undefined, undefined], [undefined, undefined]];
-        if(state[56])
-        {
-            ide_config[0][0] = { is_cdrom: true, buffer: this.devices.cdrom.buffer };
-        }
-        else
-        {
-            ide_config[0][0] = { is_cdrom: false, buffer: this.devices.ide.primary.master.buffer };
-
-        }
-        this.devices.ide = new IDEController(this, this.devices.ide.bus, ide_config);
-        this.devices.cdrom = state[56] ? this.devices.ide.primary.master : undefined;
-        this.devices.ide.primary.set_state(state[56] || state[57]);
-    }
-    else if(state[85])
-    {
-        this.devices.ide.set_state(state[85]);
-    }
-
-    this.devices.pci && this.devices.pci.set_state(state[48]);
-
+    this.devices.cdrom && this.devices.cdrom.set_state(state[56]);
+    this.devices.hda && this.devices.hda.set_state(state[57]);
     this.devices.pit && this.devices.pit.set_state(state[58]);
     this.devices.net && this.devices.net.set_state(state[59]);
     this.set_state_pic(state[60]);
@@ -1143,15 +1105,17 @@ CPU.prototype.init = function(settings, device_bus)
 
         this.devices.fdc = new FloppyController(this, settings.fda, settings.fdb);
 
-        const ide_config = [[undefined, undefined], [undefined, undefined]];
+        var ide_device_count = 0;
+
         if(settings.hda)
         {
-            ide_config[0][0] = { buffer: settings.hda };
-            ide_config[0][1] = { buffer: settings.hdb };
+            this.devices.hda = new IDEDevice(this, settings.hda, settings.hdb, false, ide_device_count++, device_bus);
         }
-        ide_config[1][0] = { is_cdrom: true, buffer: settings.cdrom };
-        this.devices.ide = new IDEController(this, device_bus, ide_config);
-        this.devices.cdrom = this.devices.ide.secondary.master;
+
+        if(settings.cdrom)
+        {
+            this.devices.cdrom = new IDEDevice(this, settings.cdrom, undefined, true, ide_device_count++, device_bus);
+        }
 
         this.devices.pit = new PIT(this, device_bus);
 

@@ -88,9 +88,6 @@ export function RTC(cpu)
 
     this.nmi_disabled = 0;
 
-    this.update_interrupt = false;
-    this.update_interrupt_time = 0;
-
     cpu.io.register_write(0x70, this, function(out_byte)
     {
         this.cmos_index = out_byte & 0x7F;
@@ -117,8 +114,6 @@ RTC.prototype.get_state = function()
     state[9] = this.cmos_b;
     state[10] = this.cmos_c;
     state[11] = this.nmi_disabled;
-    state[12] = this.update_interrupt;
-    state[13] = this.update_interrupt_time;
 
     return state;
 };
@@ -137,8 +132,6 @@ RTC.prototype.set_state = function(state)
     this.cmos_b = state[9];
     this.cmos_c = state[10];
     this.nmi_disabled = state[11];
-    this.update_interrupt = state[12] || false;
-    this.update_interrupt_time = state[13] || 0;
 };
 
 RTC.prototype.timer = function(time, legacy_mode)
@@ -162,13 +155,6 @@ RTC.prototype.timer = function(time, legacy_mode)
 
         this.next_interrupt_alarm = 0;
     }
-    else if(this.update_interrupt && this.update_interrupt_time < time)
-    {
-        this.cpu.device_raise_irq(8);
-        this.cmos_c |= 1 << 4 | 1 << 7;
-
-        this.update_interrupt_time = time + 1000; // 1 second
-    }
 
     let t = 100;
 
@@ -179,10 +165,6 @@ RTC.prototype.timer = function(time, legacy_mode)
     if(this.next_interrupt_alarm)
     {
         t = Math.min(t, Math.max(0, this.next_interrupt_alarm - time));
-    }
-    if(this.update_interrupt)
-    {
-        t = Math.min(t, Math.max(0, this.update_interrupt_time - time));
     }
 
     return t;
@@ -336,11 +318,6 @@ RTC.prototype.cmos_port_write = function(data_byte)
             break;
         case 0xB:
             this.cmos_b = data_byte;
-            if(this.cmos_b & 0x80)
-            {
-                // remove update interrupt flag
-                this.cmos_b &= 0xEF;
-            }
             if(this.cmos_b & 0x40)
             {
                 this.next_interrupt = Date.now();
@@ -367,11 +344,7 @@ RTC.prototype.cmos_port_write = function(data_byte)
                 this.next_interrupt_alarm = +alarm_date;
             }
 
-            if(this.cmos_b & 0x10)
-            {
-                dbg_log("update interrupt", LOG_RTC);
-                this.update_interrupt_time = Date.now();
-            }
+            if(this.cmos_b & 0x10) dbg_log("Unimplemented: updated interrupt", LOG_RTC);
 
             dbg_log("cmos b=" + h(this.cmos_b, 2), LOG_RTC);
             break;
@@ -386,7 +359,6 @@ RTC.prototype.cmos_port_write = function(data_byte)
             dbg_log("cmos write index " + h(this.cmos_index) + ": " + h(data_byte), LOG_RTC);
     }
 
-    this.update_interrupt = (this.cmos_b & 0x10) === 0x10 && (this.cmos_a & 0xF) > 0;
     this.periodic_interrupt = (this.cmos_b & 0x40) === 0x40 && (this.cmos_a & 0xF) > 0;
 };
 
