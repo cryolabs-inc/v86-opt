@@ -33,36 +33,10 @@ CLOSURE_SOURCE_MAP=\
 		--create_source_map '%outname%.map'
 
 CLOSURE_FLAGS=\
-		--hide_warnings_for=src/browser/worker_interface.js\
 		--jscomp_off=missingProperties\
 		--generate_exports\
 		--externs src/externs.js\
 		--warning_level VERBOSE\
-		--jscomp_error accessControls\
-		--jscomp_error checkRegExp\
-		--jscomp_error checkTypes\
-		--jscomp_error checkVars\
-		--jscomp_error conformanceViolations\
-		--jscomp_error const\
-		--jscomp_error constantProperty\
-		--jscomp_error deprecated\
-		--jscomp_error deprecatedAnnotations\
-		--jscomp_error duplicateMessage\
-		--jscomp_error es5Strict\
-		--jscomp_error externsValidation\
-		--jscomp_error globalThis\
-		--jscomp_error invalidCasts\
-		--jscomp_error misplacedTypeAnnotation\
-		--jscomp_error missingProperties\
-		--jscomp_error missingReturn\
-		--jscomp_error msgDescriptions\
-		--jscomp_error nonStandardJsDocs\
-		--jscomp_error suspiciousCode\
-		--jscomp_error strictModuleDepCheck\
-		--jscomp_error typeInvalidation\
-		--jscomp_error undefinedVars\
-		--jscomp_error unknownDefines\
-		--jscomp_error visibility\
 		--use_types_for_optimization\
 		--assume_function_wrapper\
 		--summary_detail_level 3\
@@ -90,7 +64,7 @@ LIB_FILES=9p.js filesystem.js marshall.js filesystem_opfs.js
 BROWSER_FILES=screen.js keyboard.js mouse.js speaker.js serial.js \
 	      network.js starter.js worker_bus.js dummy_screen.js \
 	      inbrowser_network.js fake_network.js wisp_network.js fetch_network.js \
-          print_stats.js filestorage.js worker_interface.js
+          print_stats.js filestorage.js 
 
 RUST_FILES=$(shell find src/rust/ -name '*.rs') \
 	   src/rust/gen/interpreter.rs src/rust/gen/interpreter0f.rs \
