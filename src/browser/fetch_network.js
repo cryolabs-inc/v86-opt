@@ -34,11 +34,8 @@ export function FetchNetworkAdapter(bus, config)
     this.doh_server = config.doh_server;
     this.tcp_conn = {};
     this.eth_encoder_buf = create_eth_encoder_buf();
-    console.log(config);
-    this.fetch = (...args) => {
-        return (config.fetch ?? fetch)(...args);
-    }
-    this.conf = config;
+    this.fetch = (...args) => fetch(...args);
+
     // Ex: 'https://corsproxy.io/?'
     this.cors_proxy = config.cors_proxy;
 
@@ -103,7 +100,7 @@ async function on_data_http(data)
         else {
             target = new URL("http://host" + first_line[1]);
         }
-        if(target.protocol === "http:" && self.location.protocol === "https:") {
+        if(typeof window !== "undefined" && target.protocol === "http:" && window.location.protocol === "https:") {
             // fix "Mixed Content" errors
             target.protocol = "https:";
         }
